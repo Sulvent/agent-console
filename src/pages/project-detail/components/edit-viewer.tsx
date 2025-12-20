@@ -29,10 +29,12 @@ import {
   useMonacoTheme,
 } from "../utils";
 import { TreeNodeItem } from "./tree-node";
+import { EditContextView } from "./edit-context";
 import type { EditViewerProps, DiffViewMode, FileListMode, DiffContentMode } from "../types";
 
 export function EditViewer({
   projectPath,
+  sessionId,
   fileEdits,
   fileEditsLoading,
   selectedFile,
@@ -509,6 +511,13 @@ export function EditViewer({
                                       Loading editor...
                                     </div>
                                   }
+                                />
+                                {/* Show what led to this edit */}
+                                <EditContextView
+                                  projectPath={projectPath}
+                                  sessionId={sessionId}
+                                  filePath={selectedFile}
+                                  editIndex={diff.sequence}
                                 />
                               </div>
                             );

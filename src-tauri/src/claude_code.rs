@@ -978,7 +978,7 @@ fn read_line_at_offset(file: &mut File, offset: u64, length: usize) -> std::io::
 }
 
 /// Parse a single JSONL line into a SessionEvent.
-fn parse_session_event(line: &str, sequence: u32, byte_offset: u64) -> Option<SessionEvent> {
+pub fn parse_session_event(line: &str, sequence: u32, byte_offset: u64) -> Option<SessionEvent> {
     let entry: JsonlEventEntry = serde_json::from_str(line).ok()?;
 
     let event_type = entry.entry_type.clone().unwrap_or_else(|| "unknown".to_string());
@@ -1175,6 +1175,78 @@ pub fn get_event_raw_json(project_path: &str, session_id: &str, byte_offset: u64
     }
 
     Some(line)
+}
+
+/// Get paginated events using a pre-built session index.
+/// This is O(k) seeks instead of O(n) scan since line offsets are cached.
+pub fn get_session_events_with_index(
+    project_path: &str,
+    session_id: &str,
+    index: &crate::session_index::SessionIndex,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> SessionEventsResponse {
+    let empty_response = SessionEventsResponse {
+        events: Vec::new(),
+        total_count: 0,
+        offset: 0,
+        has_more: false,
+    };
+
+    let session_file = match get_session_file_path(project_path, session_id) {
+        Some(p) => p,
+        None => return empty_response,
+    };
+
+    let mut file = match File::open(&session_file) {
+        Ok(f) => f,
+        Err(_) => return empty_response,
+    };
+
+    // Use pre-built line index from the session index
+    let line_index = &index.line_offsets;
+    let total_count = line_index.len() as u32;
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(200);
+
+    // For descending order, we want the LAST lines first
+    if offset >= total_count {
+        return SessionEventsResponse {
+            events: Vec::new(),
+            total_count,
+            offset,
+            has_more: false,
+        };
+    }
+
+    // Calculate which lines to read (in original file order)
+    let available = total_count - offset;
+    let take_count = std::cmp::min(limit, available) as usize;
+
+    let start_idx = (total_count - offset - 1) as usize;
+    let end_idx = if take_count > start_idx + 1 { 0 } else { start_idx + 1 - take_count };
+
+    // Parse only the requested lines (in reverse order for descending)
+    let mut events = Vec::with_capacity(take_count);
+
+    for idx in (end_idx..=start_idx).rev() {
+        let (byte_offset, line_len) = line_index[idx];
+
+        if let Ok(line) = read_line_at_offset(&mut file, byte_offset, line_len) {
+            if let Some(event) = parse_session_event(&line, idx as u32, byte_offset) {
+                events.push(event);
+            }
+        }
+    }
+
+    let has_more = (offset + take_count as u32) < total_count;
+
+    SessionEventsResponse {
+        events,
+        total_count,
+        offset,
+        has_more,
+    }
 }
 
 /// Get full SessionEvent objects for specific byte offsets.

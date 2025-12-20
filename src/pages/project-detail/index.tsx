@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   IconCheck,
   IconChevronDown,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useSessionIndex } from "@/lib/use-session-index";
 import type { Session, ActiveSessionsResult, FileEdit, FileDiff, SessionEvent, SessionEventsResponse, SearchResponse } from "@/lib/types";
 import { formatRelativeTime, truncateUuid } from "./utils";
 import { EditViewer } from "./components/edit-viewer";
@@ -85,6 +85,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
   }, [projectPath]);
 
   // Load file edits function (reusable for initial load and refresh)
+  // Uses indexed command for O(1) lookup when index is available
   const loadFileEdits = useCallback(async () => {
     if (!selectedSessionId) {
       setFileEdits([]);
@@ -93,7 +94,8 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
 
     setFileEditsLoading(true);
     try {
-      const edits = await invoke<FileEdit[]>("get_session_file_edits", {
+      // Use indexed version for fast lookup from cached index
+      const edits = await invoke<FileEdit[]>("get_indexed_file_edits", {
         projectPath,
         sessionId: selectedSessionId,
       });
@@ -145,6 +147,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
 
   // Load initial events when switching to events tab
+  // Uses indexed command for O(k) seeks instead of O(n) scan
   const loadEvents = useCallback(async () => {
     if (!selectedSessionId) {
       setEvents([]);
@@ -155,7 +158,8 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
 
     setEventsLoading(true);
     try {
-      const response = await invoke<SessionEventsResponse>("get_session_events", {
+      // Use indexed version for fast pagination from cached line offsets
+      const response = await invoke<SessionEventsResponse>("get_indexed_events", {
         projectPath,
         sessionId: selectedSessionId,
         offset: 0,
@@ -186,55 +190,15 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
     }
   }, [loadFileEdits, loadEvents, events.length, activeTab]);
 
-  // Watch session file for real-time updates
-  useEffect(() => {
-    if (!selectedSessionId) return;
-
-    let unlisten: (() => void) | null = null;
-
-    async function setupWatcher() {
-      // Start watching the session file
-      try {
-        await invoke("watch_session", {
-          projectPath,
-          sessionId: selectedSessionId,
-        });
-      } catch (err) {
-        console.error("Failed to start session watcher:", err);
-      }
-
-      // Listen for session-changed events - single stream, multiple consumers
-      unlisten = await listen<{ projectPath: string; sessionId: string }>(
-        "session-changed",
-        (event) => {
-          // Only refresh if this event is for our current session
-          if (
-            event.payload.projectPath === projectPath &&
-            event.payload.sessionId === selectedSessionId
-          ) {
-            handleSessionChanged();
-          }
-        }
-      );
-    }
-
-    setupWatcher();
-
-    // Cleanup: stop watching and remove listener
-    return () => {
-      if (unlisten) {
-        unlisten();
-      }
-      invoke("unwatch_session", {
-        projectPath,
-        sessionId: selectedSessionId,
-      }).catch((err) => {
-        console.error("Failed to stop session watcher:", err);
-      });
-    };
-  }, [projectPath, selectedSessionId, handleSessionChanged]);
+  // Session index hook - manages indexing, file watching, and change notifications
+  const { isIndexing, error: indexError } = useSessionIndex(
+    projectPath,
+    selectedSessionId,
+    handleSessionChanged
+  );
 
   // Load more events for infinite scrolling
+  // Uses indexed command for O(k) seeks
   const loadMoreEvents = useCallback(async () => {
     if (!selectedSessionId || eventsLoadingMore || !eventsHasMore) {
       return;
@@ -242,7 +206,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
 
     setEventsLoadingMore(true);
     try {
-      const response = await invoke<SessionEventsResponse>("get_session_events", {
+      const response = await invoke<SessionEventsResponse>("get_indexed_events", {
         projectPath,
         sessionId: selectedSessionId,
         offset: events.length,
@@ -535,6 +499,16 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <p className="text-sm">No session selected</p>
           </div>
+        ) : isIndexing ? (
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
+            <IconLoader2 className="size-6 animate-spin" />
+            <p className="text-sm">Preparing session...</p>
+          </div>
+        ) : indexError ? (
+          <div className="h-full flex flex-col items-center justify-center text-destructive gap-2">
+            <p className="text-sm font-medium">Failed to load session</p>
+            <p className="text-xs text-muted-foreground max-w-md text-center">{indexError}</p>
+          </div>
         ) : activeTab === "events" ? (
           <EventLogViewer
             events={filteredEvents}
@@ -564,6 +538,7 @@ export function ProjectDetailPage({ projectPath }: ProjectDetailPageProps) {
         ) : activeTab === "edits" ? (
           <EditViewer
             projectPath={projectPath}
+            sessionId={selectedSessionId ?? ""}
             fileEdits={fileEdits}
             fileEditsLoading={fileEditsLoading}
             selectedFile={selectedFile}

@@ -2,11 +2,13 @@ mod claude_code;
 mod git;
 mod process;
 mod search;
+mod session_index;
 mod terminal;
 mod watcher;
 
 use claude_code::{FileDiff, FileEdit, PolicyEvaluation, Project, Session};
 use git::GitFileDiff;
+use session_index::{get_edit_context, EditContext, IndexStatus};
 use std::path::Path;
 use tauri::{AppHandle, State};
 use terminal::TerminalType;
@@ -211,6 +213,102 @@ fn unwatch_telemetry(state: State<'_, WatcherState>, project_path: String) -> Re
     watcher::unwatch_telemetry(&state, &project_path)
 }
 
+/// Get the index status for a session.
+/// Returns ready state, event counts, and any errors.
+#[tauri::command]
+fn get_index_status(
+    state: State<'_, WatcherState>,
+    project_path: String,
+    session_id: String,
+) -> IndexStatus {
+    state.get_index_status(&project_path, &session_id)
+}
+
+/// Get file edits from the cached session index (O(1) lookup).
+/// Falls back to scanning if index not available.
+#[tauri::command]
+fn get_indexed_file_edits(
+    state: State<'_, WatcherState>,
+    project_path: String,
+    session_id: String,
+) -> Vec<FileEdit> {
+    // Try to get from cached index first
+    if let Some(index) = state.get_index(&project_path, &session_id) {
+        return index.file_edits;
+    }
+    // Fallback to scanning (shouldn't happen if index is ready)
+    claude_code::get_session_file_edits(&project_path, &session_id)
+}
+
+/// Get paginated events using cached line offsets (O(k) seeks instead of O(n) scan).
+/// Falls back to scanning if index not available.
+#[tauri::command]
+fn get_indexed_events(
+    state: State<'_, WatcherState>,
+    project_path: String,
+    session_id: String,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> claude_code::SessionEventsResponse {
+    // Try to get from cached index first
+    if let Some(index) = state.get_index(&project_path, &session_id) {
+        return claude_code::get_session_events_with_index(
+            &project_path,
+            &session_id,
+            &index,
+            offset,
+            limit,
+        );
+    }
+    // Fallback to scanning (shouldn't happen if index is ready)
+    claude_code::get_session_events(&project_path, &session_id, offset, limit)
+}
+
+/// Get the context for a file edit - the chain of events from the human message to the edit.
+/// Uses the cached session index to walk the parent chain efficiently.
+///
+/// Takes a file path and edit index (0-based position in the list of edits for that file),
+/// and returns the chain of events from the triggering human message to the edit.
+#[tauri::command]
+fn get_file_edit_context(
+    state: State<'_, WatcherState>,
+    project_path: String,
+    session_id: String,
+    file_path: String,
+    edit_index: u32,
+) -> Result<EditContext, String> {
+    // Get the cached index
+    let index = state
+        .get_index(&project_path, &session_id)
+        .ok_or_else(|| "Session index not available".to_string())?;
+
+    // Look up the line number for this file's edit at the given index
+    let edit_lines = index
+        .file_to_edit_lines
+        .get(&file_path)
+        .ok_or_else(|| format!("No edits found for file: {}", file_path))?;
+
+    let edit_line = *edit_lines
+        .get(edit_index as usize)
+        .ok_or_else(|| format!("Edit index {} out of range for file {}", edit_index, file_path))?;
+
+    // Get the session file path
+    let home = dirs::home_dir().ok_or_else(|| "Cannot find home directory".to_string())?;
+    let encoded_name = project_path.replace('/', "-");
+    let session_file = home
+        .join(".claude")
+        .join("projects")
+        .join(&encoded_name)
+        .join(format!("{}.jsonl", session_id));
+
+    if !session_file.exists() {
+        return Err(format!("Session file not found: {}", session_file.display()));
+    }
+
+    // Get the edit context using the query function
+    get_edit_context(&index, &session_file, edit_line)
+}
+
 /// Get list of policy evaluations for a project.
 #[tauri::command]
 fn get_policy_evaluations(project_path: String) -> Vec<PolicyEvaluation> {
@@ -299,6 +397,10 @@ pub fn run() {
             unwatch_subagent,
             watch_telemetry,
             unwatch_telemetry,
+            get_index_status,
+            get_indexed_file_edits,
+            get_indexed_events,
+            get_file_edit_context,
             get_policy_evaluations,
             get_policy_evaluation,
             reveal_in_file_manager

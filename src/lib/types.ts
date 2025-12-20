@@ -391,6 +391,34 @@ export interface CupcakeSpan {
 }
 
 // =============================================================================
+// Session Index Types
+// =============================================================================
+
+/** Status of the session index (matches Rust IndexStatus in session_index/types.rs) */
+export interface IndexStatus {
+  /** Whether the index is ready for use */
+  ready: boolean;
+  /** Total number of events indexed */
+  totalEvents: number;
+  /** Number of file edits found */
+  fileEditsCount: number;
+  /** Number of unique files edited */
+  filesEditedCount: number;
+  /** Error message if indexing failed */
+  error: string | null;
+}
+
+/** Context for a file edit - the chain of events from human message to the edit */
+export interface EditContext {
+  /** Events in order from the human message to the edit */
+  events: SessionEvent[];
+  /** Line number of the triggering human message */
+  triggerLine: number;
+  /** Line number of the edit itself */
+  editLine: number;
+}
+
+// =============================================================================
 // Search Types
 // =============================================================================
 

@@ -30,6 +30,7 @@ export interface TreeNodeItemProps {
 
 export interface EditViewerProps {
   projectPath: string;
+  sessionId: string;
   fileEdits: FileEdit[];
   fileEditsLoading: boolean;
   selectedFile: string | null;
